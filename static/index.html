@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GLPal</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand"><span class="logo">G</span><span>GLPal</span></div>
+    <span id="ai-badge" class="badge" title="Which AI is answering">AI: …</span>
+  </header>
+
+  <nav class="tabs" role="tablist">
+    <button class="tab active" data-view="today">Today</button>
+    <button class="tab" data-view="log">Log</button>
+    <button class="tab" data-view="coach">Coach</button>
+    <button class="tab" data-view="history">History</button>
+    <button class="tab" data-view="settings">Settings</button>
+  </nav>
+
+  <main>
+    <!-- TODAY -->
+    <section id="view-today" class="view active">
+      <div id="nudges"></div>
+      <div class="grid">
+        <article class="card" id="dose-card"></article>
+        <article class="card">
+          <h3>Protein today</h3>
+          <div class="ring-row"><div class="ring" id="protein-ring"></div><div id="protein-text"></div></div>
+        </article>
+        <article class="card">
+          <h3>Fluids today</h3>
+          <div class="ring-row"><div class="ring water" id="water-ring"></div><div id="water-text"></div></div>
+          <div class="quick">
+            <button data-water="250">+250 ml</button><button data-water="500">+500 ml</button>
+          </div>
+        </article>
+        <article class="card" id="weight-card"></article>
+      </div>
+      <h2 class="section-title">Patterns in your data</h2>
+      <div id="patterns" class="stack"></div>
+    </section>
+
+    <!-- LOG -->
+    <section id="view-log" class="view">
+      <div class="grid">
+        <form class="card" id="meal-form">
+          <h3>Meal</h3>
+          <label>What did you eat?<textarea name="description" rows="2" placeholder="e.g. 2 eggs, toast and a Greek yogurt"></textarea></label>
+          <label class="file">Photo (optional)<input type="file" name="photo" accept="image/*" capture="environment"></label>
+          <button type="button" id="estimate-btn" class="secondary">Estimate with AI</button>
+          <div id="estimate-out" class="estimate"></div>
+          <div class="row">
+            <label>Protein (g)<input name="protein_g" type="number" min="0" step="1" value="0"></label>
+            <label>Calories<input name="calories" type="number" min="0" step="1" value="0"></label>
+          </div>
+          <label class="check"><input type="checkbox" name="high_fat"> High-fat meal</label>
+          <button type="submit">Save meal</button>
+        </form>
+
+        <form class="card" id="symptom-form">
+          <h3>Side effect</h3>
+          <div class="chips" id="symptom-chips"></div>
+          <label>Symptom<input name="symptom" required placeholder="nausea"></label>
+          <label>How bad? <span id="sev-label">3 / 5</span><input name="severity" type="range" min="1" max="5" value="3"></label>
+          <label>Notes<input name="notes" placeholder="optional"></label>
+          <button type="submit">Save side effect</button>
+        </form>
+
+        <form class="card" id="dose-form">
+          <h3>Dose</h3>
+          <div class="row">
+            <label>Medicine<select name="medication">
+              <option value="wegovy">Wegovy</option><option value="ozempic">Ozempic</option>
+              <option value="mounjaro">Mounjaro</option><option value="zepbound">Zepbound</option></select></label>
+            <label>Dose (mg)<input name="dose_mg" type="number" step="0.05" min="0.05" required></label>
+          </div>
+          <label>Injection site<select name="site" id="site-select"></select></label>
+          <label>When<input name="taken_at" type="datetime-local"></label>
+          <label>Notes<input name="notes" placeholder="optional"></label>
+          <button type="submit">Save dose</button>
+        </form>
+
+        <form class="card" id="weight-form">
+          <h3>Weight</h3>
+          <label>Weight (kg)<input name="weight_kg" type="number" step="0.1" min="20" required></label>
+          <button type="submit">Save weight</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- COACH -->
+    <section id="view-coach" class="view">
+      <div class="coach">
+        <p class="hint">Ask about your medicine, side effects or eating. Every answer comes from trusted sources
+          (FDA prescribing information and a 2025 joint nutrition advisory) and shows them. It's education, not medical advice.</p>
+        <div class="chips" id="coach-suggestions"></div>
+        <div id="chat" class="chat"></div>
+        <form id="coach-form" class="ask">
+          <input name="question" placeholder="e.g. I missed my shot 3 days ago, what now?" autocomplete="off" required>
+          <button type="submit">Ask</button>
+        </form>
+        <label class="check small"><input type="checkbox" id="use-data" checked> Let the coach see my recent logs</label>
+      </div>
+    </section>
+
+    <!-- HISTORY -->
+    <section id="view-history" class="view">
+      <div class="card">
+        <h3>Doctor visit summary</h3>
+        <p>A one-page summary of your last 30 days: doses, side effects, weight, protein and patterns.</p>
+        <a class="button" href="/report" target="_blank" rel="noopener">Open printable summary</a>
+      </div>
+      <h2 class="section-title">Recent entries</h2>
+      <div id="history" class="stack"></div>
+    </section>
+
+    <!-- SETTINGS -->
+    <section id="view-settings" class="view">
+      <form class="card" id="profile-form">
+        <h3>Your profile</h3>
+        <label>Name<input name="name"></label>
+        <div class="row">
+          <label>Start weight (kg)<input name="start_weight_kg" type="number" step="0.1"></label>
+          <label>Goal weight (kg)<input name="goal_weight_kg" type="number" step="0.1"></label>
+        </div>
+        <div class="row">
+          <label>Protein target (g/day)<input name="protein_target_g" type="number" step="1"></label>
+          <label>Fluids target (ml/day)<input name="water_target_ml" type="number" step="50"></label>
+        </div>
+        <p class="hint" id="protein-hint"></p>
+        <button type="submit">Save profile</button>
+      </form>
+      <div class="card">
+        <h3>Trusted sources</h3>
+        <ul id="source-list" class="sources"></ul>
+      </div>
+    </section>
+  </main>
+
+  <footer>GLPal is an educational tracking tool, not medical advice. In an emergency call 911.</footer>
+  <div id="toast" class="toast"></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>
