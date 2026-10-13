@@ -225,7 +225,9 @@ function applyDisclosure(provider) {
   const real = provider && provider !== "mock";
   const coach = $("#ai-disclosure"), meal = $("#meal-disclosure");
   if (coach) coach.textContent = real
-    ? `With an AI key set, your question and, if you allow it, your recent logs are sent to ${provider} to answer. With no key, nothing leaves this computer.`
+    ? `With an AI key set, your question and, if you allow it, your recent logs are sent to ${provider} to answer`
+      + (provider === "anthropic" ? ", and Claude searches trusted medical websites (FDA, NIH, Mayo Clinic and similar) for the facts. " : ". ")
+      + "With no key, nothing leaves this computer."
     : "Offline mode: nothing leaves this computer.";
   if (meal) meal.textContent = real
     ? `With an AI key set, your meal description and photo are sent to ${provider} to estimate. With no key, nothing leaves this computer.`

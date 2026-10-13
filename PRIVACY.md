@@ -19,6 +19,10 @@ Only AI requests, and only when you have set an API key in `.env`:
   box is ticked, a short summary of your recent logs (medicine, dose, last dose date, next due date,
   protein and fluid totals, and any patterns GLPal noticed) is sent with it. That box is unticked by
   default whenever a real AI provider is active, so log-sharing is opt-in.
+- **Live search (Anthropic only).** To answer medical questions, Claude may search a fixed list of
+  trusted medical websites (FDA, NIH/DailyMed/MedlinePlus, CDC, Health Canada, WHO, NHS, Mayo Clinic,
+  Cleveland Clinic, medical societies). The search runs on Anthropic's side; the search terms are based
+  on your question. Turn it off with `WEB_SEARCH=off` in `.env`.
 - **Meal estimates.** When you press "Estimate with AI", your meal description — and the photo, if
   you attached one and your provider supports vision — is sent to the same provider.
 

@@ -67,6 +67,13 @@ in `.env`:
 | Anthropic Claude | `ANTHROPIC_API_KEY=...` | Yes |
 | OpenAI | `OPENAI_API_KEY=...` | Yes |
 
+**Live trusted-site search (Anthropic).** With the Anthropic provider, the coach uses Claude's web search
+restricted to an allowlist of trusted medical sites (`app/websearch.py`: FDA, NIH incl. DailyMed and
+MedlinePlus, CDC, Health Canada, WHO, NHS, Mayo Clinic, Cleveland Clinic, medical societies), and answers
+with citations to those pages. Red-flag triage and the dose-change guard still run first; an uncited reply
+is never shown as medical text; if search is unavailable the coach falls back to the built-in library.
+Set `WEB_SEARCH=off` to disable. Cost: about $10 per 1,000 searches plus tokens (max 3 searches per question).
+
 `LLM_PROVIDER=auto` (the default) uses whichever key is set. The badge in the top-right corner
 shows which AI is active.
 

@@ -8,7 +8,7 @@ Order of checks for every question:
 """
 import re
 
-from . import knowledge, llm
+from . import knowledge, llm, websearch
 
 DISCLAIMER = "GLPal gives general education from trusted sources, not medical advice. Your prescriber knows your situation."
 
@@ -317,13 +317,31 @@ def answer(question: str, medication: str | None = None, user_context: str = "",
             text += "\n\nFor reference, here is the official schedule: " + _extractive(sched)
         return _out({"answer": text, "citations": _cite_list(sched), "kind": "refer"})
 
-    # 3. Greetings, thanks and anything the sources don't cover: a casual conversation.
+    # 3. Live search of trusted medical websites (Claude + allowed domains), when available.
+    if not _small_talk(question):
+        live = websearch.answer(question, medication, user_context, history)
+        if live is not None and live["text"]:
+            text = live["text"]
+            if text.lstrip().startswith("[CHAT]"):
+                reply = text.lstrip()[len("[CHAT]"):].strip()
+                safe = reply and not _CHAT_MEDICAL.search(reply)
+                return _out({"answer": reply if safe else GUARDED, "citations": [], "kind": "chat",
+                             "mode": "anthropic+web" if safe else "anthropic+web+guarded"})
+            if live["citations"]:
+                return _out({"answer": text, "citations": live["citations"], "kind": "answer",
+                             "mode": "anthropic+web", "searches": live["searches"]})
+            # Searched (or not) but cited nothing: never show uncited medical text; chat instead.
+            reply, chat_mode = _chat_reply(question, history, user_context)
+            kind = "chat" if reply != NOT_FOUND else "not_found"
+            return _out({"answer": reply, "citations": [], "kind": kind, "mode": f"{chat_mode}+web-uncited"})
+
+    # 4. Greetings, thanks and anything the sources don't cover: a casual conversation.
     if _small_talk(question) or not passages:
         text, mode = _chat_reply(question, history, user_context)
         kind = "chat" if text != NOT_FOUND else "not_found"
         return _out({"answer": text, "citations": [], "kind": kind, "mode": mode})
 
-    # 4. A medical question with relevant sources: a cited answer.
+    # 5. Fallback (no live search): a cited answer from the local trusted library.
     unknown = knowledge.unknown_terms(question)
     numbered = "\n\n".join(f"[{i + 1}] {p['title']} ({p['source_name']}, {p.get('section', '')}):\n{p['text']}"
                            for i, p in enumerate(passages))
