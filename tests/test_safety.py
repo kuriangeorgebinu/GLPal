@@ -162,3 +162,24 @@ def test_knowledge_search_nonsense_returns_nothing():
 def test_knowledge_search_requires_a_real_content_word():
     # "the" and "of" are stopwords; a query of only filler must not return passages.
     assert knowledge.search("the of and to") == []
+
+
+# --- Small talk -------------------------------------------------------------------------------
+
+@pytest.mark.parametrize("msg", ["Hi", "hello!", "Hey there", "good morning", "what can you do?", "help"])
+def test_greetings_get_a_friendly_intro(msg):
+    r = coach.answer(msg)
+    assert r["kind"] == "chat" and "GLPal's coach" in r["answer"] and not r["citations"]
+
+
+def test_thanks_gets_a_short_reply():
+    assert coach.answer("thanks!")["kind"] == "chat"
+
+
+@pytest.mark.parametrize("msg", ["hi, my lips are swelling", "hello I keep throwing up and can't keep water down"])
+def test_greeting_never_hides_a_red_flag(msg):
+    assert coach.answer(msg)["kind"] == "urgent"
+
+
+def test_greeting_with_a_question_still_gets_an_answer():
+    assert coach.answer("hi, how much protein should I eat?")["kind"] == "answer"

@@ -140,6 +140,31 @@ def _caution(question: str) -> str | None:
     return CAUTION if _GI_REPORT.search(q) else None
 
 
+# Small talk: greetings, thanks and "what can you do?" get a friendly reply instead of a
+# "not in my sources" refusal. Only whole short messages match, so real questions still go
+# through the red-flag check and retrieval.
+_GREETING = re.compile(r"^\s*(hi+|hey+|hello+|hiya|yo|good (morning|afternoon|evening)|greetings|howdy)"
+                       r"( there| glpal| coach)?\s*[!.?]*\s*$", re.I)
+_THANKS = re.compile(r"^\s*(thanks?|thank you|thx|ty|cheers|great|ok(ay)?|cool|perfect|got it)"
+                     r"( (so much|a lot|very much))?\s*[!.?]*\s*$", re.I)
+_HELP = re.compile(r"^\s*(help|what can you do|what do you do|how does this work|who are you|"
+                   r"what (can|should) i ask( you)?)\s*[!.?]*\s*$", re.I)
+
+INTRO = ("Hi! I'm GLPal's coach. I answer questions about Wegovy, Ozempic, Mounjaro and Zepbound using only "
+         "trusted sources (the FDA labels and a 2025 nutrition advisory), and I show you where each answer comes "
+         "from.\n\nYou could ask me things like:\n- I missed my shot 3 days ago, what now?\n"
+         "- How much protein should I eat?\n- How do I deal with nausea?\n- How do I store my pen?\n\n"
+         "I can't advise changing your dose; that's for your prescriber.")
+
+
+def _small_talk(question: str) -> str | None:
+    if _GREETING.match(question) or _HELP.match(question):
+        return INTRO
+    if _THANKS.match(question):
+        return "You're welcome! Ask me anything else about your medicine, side effects or eating."
+    return None
+
+
 def _card(card_id: str) -> dict | None:
     passages, _ = knowledge.load()
     return next((p for p in passages if p["id"] == card_id), None)
@@ -183,6 +208,10 @@ def answer(question: str, medication: str | None = None, user_context: str = "")
     if not question:
         return {"answer": "Ask me anything about your GLP-1 medicine, side effects or nutrition.",
                 "citations": [], "kind": "empty", "disclaimer": DISCLAIMER}
+
+    chat = _small_talk(question)
+    if chat:
+        return {"answer": chat, "citations": [], "kind": "chat", "disclaimer": DISCLAIMER}
 
     flag = _red_flag(question)
     if flag:
