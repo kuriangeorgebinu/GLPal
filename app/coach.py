@@ -57,8 +57,10 @@ RED_FLAGS = [
         rf"{_FIRST_PERSON}.{{0,80}}{_SEVERE}.{{0,60}}{_PAIN}.{{0,40}}{_STOMACH}",   # "constant pain in my abdomen"
         rf"{_FIRST_PERSON}.{{0,80}}{_STOMACH}.{{0,40}}{_PAIN}.{{0,60}}(back|spine)",  # "belly pain that goes to my back"
         rf"{_FIRST_PERSON}.{{0,80}}{_PAIN}.{{0,40}}(radiat\w*|spread\w*|go(es|ing)?|shoot\w*|travel\w*).{{0,30}}back",
-        rf"{_FIRST_PERSON}.{{0,80}}{_STOMACH}.{{0,40}}{_PAIN}.{{0,40}}(won.?t|wont|not|never|doesn.?t|does not).{{0,20}}"
-        rf"(go away|stop|let up|ease|end)",
+        # Persistent pain, soreness or cramping that won't stop ("my tummy is really sore and it won't stop").
+        # "sore"/"cramps" alone are too common to flag; they count only with a won't-stop marker.
+        rf"{_FIRST_PERSON}.{{0,80}}{_STOMACH}.{{0,40}}(?:{_PAIN}|sore\w*|cramp\w*).{{0,60}}"
+        rf"(won.?t|wont|not|never|doesn.?t|does not|can.?t make it).{{0,20}}(go away|stop|let up|ease|end)",
     ], "Severe stomach pain that won't go away, especially if it spreads to your back, can be a sign of pancreatitis."),
     ("allergy", [
         rf"{_SWELL}.{{0,40}}{_FACE}",                              # "my lips are swelling"
