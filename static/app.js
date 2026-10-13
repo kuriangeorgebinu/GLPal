@@ -163,7 +163,8 @@ async function ask(q) {
     const cites = (r.citations || []).map((c) => `<details><summary><b>[${c.n}]</b> ${esc(c.title)} · ${esc(c.source)}${c.section ? `, ${esc(c.section)}` : ""}</summary>
       <p>“${esc(c.quote)}”</p>${c.url ? `<a href="${esc(c.url)}" target="_blank" rel="noopener">Open source</a>` : ""}</details>`).join("");
     pending.className = `msg bot ${r.kind === "urgent" ? "urgent" : ""}`;
-    pending.innerHTML = body + (cites ? `<div class="cites"><b>Sources</b>${cites}</div>` : "") + `<div class="disc">${esc(r.disclaimer)}</div>`;
+    const caution = r.caution ? `<div class="caution">⚠️ ${esc(r.caution)}</div>` : "";
+    pending.innerHTML = body + caution + (cites ? `<div class="cites"><b>Sources</b>${cites}</div>` : "") + `<div class="disc">${esc(r.disclaimer)}</div>`;
   } catch (err) { pending.textContent = `Sorry, something went wrong: ${err.message}`; }
 }
 

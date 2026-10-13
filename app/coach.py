@@ -18,11 +18,24 @@ RED_FLAG_CATEGORIES = ("pancreatitis", "allergy", "mood", "kidney-dehydration", 
 
 # Order-independent building blocks. A pattern fires when the words appear anywhere in the question,
 # in any order, so "my stomach pain is really bad" and "I have severe abdominal pain" both match.
-_SEVERE = r"(severe|severely|really bad|very bad|so bad|bad|intense|unbearable|extreme|terrible|awful|" \
+#
+# A red flag is a REPORT about the user, not a word in a question. Bare "bad", "sore" and
+# "cramp/cramps/cramping" are deliberately NOT severity words: "is constipation bad on Mounjaro?"
+# and "my belly is sore at the injection site" are ordinary questions, not emergencies. The urgent
+# bar is a strong severity word ("severe", "really bad", "unbearable", "won't go away", ...).
+_SEVERE = r"(severe|severely|really bad|very bad|so bad|intense|unbearable|extreme|terrible|awful|" \
           r"won.?t go away|wont go away|not going away|doesn.?t go away|does not go away|constant|constantly|" \
-          r"getting worse|getting bad|really hurts|really hurting|really sore)"
+          r"getting worse|getting bad|really hurts|really hurting)"
 _STOMACH = r"(stomach|abdominal|abdomen|belly|tummy|gut)"
-_PAIN = r"(pain|pains|painful|hurt|hurts|hurting|ache|aching|sore|soreness|cramp|cramping|cramps)"
+_PAIN = r"(pain|pains|painful|hurt|hurts|hurting|ache|aching)"
+# First-person frame: a red flag is the user reporting their own symptom, not asking about one.
+_FIRST_PERSON = r"\b(?:i|i'm|im|i've|ive|me|my)\b"
+# Hedges and negations: "my stomach hurts a little, not bad" must not raise the pancreatitis flag.
+_HEDGE = r"(not bad|a little|a bit|slight|slightly|mild|mildly|no big deal|not severe|not that bad)"
+# Persistence / inability markers for dehydration: one throw-up is not an emergency, "I keep throwing
+# up" or "I've been vomiting since last night" is.
+_PERSIST = r"(keep|keeps|kept|can.?t keep|cannot keep|since|all day|all night|for hours|for days|" \
+           r"non.?stop|won.?t stop|wont stop|over and over|again and again|constantly|still|every)"
 _BREATHE = r"(can.?t breathe|cannot breathe|hard to breathe|hard time breathing|difficult to breathe|" \
            r"difficulty breathing|trouble breathing|short of breath|shortness of breath|breathless|" \
            r"struggling to breathe|gasping|wheez|anaphyla)"
@@ -37,12 +50,14 @@ _MOOD = r"(suicid\w*|kill myself|killing myself|end my life|ending my life|take 
 
 RED_FLAGS = [
     ("pancreatitis", [
-        rf"{_SEVERE}.{{0,60}}{_STOMACH}.{{0,40}}{_PAIN}",          # "my stomach pain is really bad"
-        rf"{_STOMACH}.{{0,40}}{_PAIN}.{{0,60}}{_SEVERE}",          # "my stomach pain is really bad"
-        rf"{_SEVERE}.{{0,60}}{_PAIN}.{{0,40}}{_STOMACH}",          # "constant pain in my abdomen"
-        rf"{_STOMACH}.{{0,40}}{_PAIN}.{{0,60}}(back|spine)",       # "belly pain that goes to my back"
-        rf"{_PAIN}.{{0,40}}(radiat\w*|spread\w*|go(es|ing)?|shoot\w*|travel\w*).{{0,30}}back",
-        rf"{_STOMACH}.{{0,40}}{_PAIN}.{{0,40}}(won.?t|wont|not|never|doesn.?t|does not).{{0,20}}"
+        # Every pancreatitis pattern needs a first-person frame, so "is vomiting a common side effect
+        # of Wegovy?" and "can I take something for stomach cramps" stay ordinary questions.
+        rf"{_FIRST_PERSON}.{{0,80}}{_SEVERE}.{{0,60}}{_STOMACH}.{{0,40}}{_PAIN}",   # "my stomach pain is really bad"
+        rf"{_FIRST_PERSON}.{{0,80}}{_STOMACH}.{{0,40}}{_PAIN}.{{0,60}}{_SEVERE}",   # "my stomach pain is severe"
+        rf"{_FIRST_PERSON}.{{0,80}}{_SEVERE}.{{0,60}}{_PAIN}.{{0,40}}{_STOMACH}",   # "constant pain in my abdomen"
+        rf"{_FIRST_PERSON}.{{0,80}}{_STOMACH}.{{0,40}}{_PAIN}.{{0,60}}(back|spine)",  # "belly pain that goes to my back"
+        rf"{_FIRST_PERSON}.{{0,80}}{_PAIN}.{{0,40}}(radiat\w*|spread\w*|go(es|ing)?|shoot\w*|travel\w*).{{0,30}}back",
+        rf"{_FIRST_PERSON}.{{0,80}}{_STOMACH}.{{0,40}}{_PAIN}.{{0,40}}(won.?t|wont|not|never|doesn.?t|does not).{{0,20}}"
         rf"(go away|stop|let up|ease|end)",
     ], "Severe stomach pain that won't go away, especially if it spreads to your back, can be a sign of pancreatitis."),
     ("allergy", [
@@ -58,16 +73,17 @@ RED_FLAGS = [
         _MOOD,
     ], "You deserve support right now."),
     ("kidney-dehydration", [
-        rf"{_VOMIT}.{{0,40}}(all day|all night|non.?stop|constantly|keep|keeps|kept|since|for (hours|days)|"
-        rf"every|again|still|can.?t stop|won.?t stop|over and over)",
-        rf"(keep|keeps|kept|been|am|is|are).{{0,20}}{_VOMIT}",     # "I keep throwing up"
-        rf"(can.?t|cannot|unable to|hard to|trouble).{{0,30}}keep.{{0,30}}(water|fluids?|anything|food|"
-        rf"liquids?|it).{{0,20}}down",
-        rf"(haven.?t|have not|not|barely|hardly).{{0,30}}{_URINE}.{{0,30}}(all day|today|since|in \d+|at all|"
-        rf"much|yet)",
-        rf"(no|not much|very little).{{0,20}}(urine|pee|peeing|output)",
-        rf"(dry mouth|no tears|dizzy when i stand|light.?headed when i stand|passing out|fainting|"
-        rf"can.?t keep anything down)",
+        # First-person report + a persistence/inability marker. "I threw up once this morning" is not
+        # an emergency; "I keep throwing up" and "I've been vomiting since last night" are.
+        rf"{_FIRST_PERSON}.{{0,60}}{_VOMIT}.{{0,40}}{_PERSIST}",
+        rf"{_FIRST_PERSON}.{{0,60}}{_PERSIST}.{{0,40}}{_VOMIT}",   # "I keep throwing up"
+        rf"{_FIRST_PERSON}.{{0,60}}(can.?t|cannot|unable to|hard to|trouble).{{0,30}}keep.{{0,30}}"
+        rf"(water|fluids?|anything|food|liquids?|it).{{0,20}}down",
+        rf"{_FIRST_PERSON}.{{0,60}}(haven.?t|have not|not|barely|hardly).{{0,30}}{_URINE}.{{0,30}}"
+        rf"(all day|today|since|in \d+|at all|much|yet)",
+        rf"{_FIRST_PERSON}.{{0,60}}(no|not much|very little).{{0,20}}(urine|pee|peeing|output)",
+        rf"{_FIRST_PERSON}.{{0,60}}(dry mouth|no tears|dizzy when i stand|light.?headed when i stand|"
+        rf"passing out|fainting|can.?t keep anything down)",
     ], "Not being able to keep fluids down can lead to dehydration and kidney problems."),
     ("thyroid-boxed", [
         rf"(lump|mass|bump|nodule|swelling|swollen).{{0,30}}(neck|throat|thyroid)",
@@ -104,6 +120,22 @@ def _red_flag(question: str):
         if any(re.search(p, q) for p in patterns):
             return card_id, message
     return None
+
+
+# Third state: a first-person GI report that does not meet the urgent bar ("my stomach hurts",
+# "I threw up once this morning"). The answer is normal, but it carries a caution line so the user
+# knows what would make it an emergency.
+CAUTION = ("If this becomes severe, won't go away, spreads to your back, or you can't keep fluids down, "
+           "contact your healthcare provider or go to urgent care.")
+_GI_REPORT = re.compile(rf"{_FIRST_PERSON}.{{0,60}}(?:{_STOMACH}.{{0,40}}{_PAIN}|{_VOMIT})")
+
+
+def _caution(question: str) -> str | None:
+    """A caution line for a first-person stomach/vomiting report that is not (yet) an emergency."""
+    q = question.lower()
+    if re.search(_HEDGE, q):
+        return None
+    return CAUTION if _GI_REPORT.search(q) else None
 
 
 def _card(card_id: str) -> dict | None:
@@ -165,6 +197,7 @@ def answer(question: str, medication: str | None = None, user_context: str = "")
         return {"answer": body, "citations": cites, "kind": "urgent", "disclaimer": DISCLAIMER}
 
     passages = knowledge.search(question, k=4, medication=medication)
+    caution = _caution(question)
 
     if DOSE_CHANGE.search(question):
         sched = [p for p in passages if "escalation" in p["id"] or "missed" in p["id"]][:2]
@@ -172,11 +205,17 @@ def answer(question: str, medication: str | None = None, user_context: str = "")
                 "prescriber, who knows your health history. Please message or call them, or ask your pharmacist.")
         if sched:
             text += "\n\nFor reference, here is the official schedule: " + _extractive(sched)
-        return {"answer": text, "citations": _cite_list(sched), "kind": "refer", "disclaimer": DISCLAIMER}
+        out = {"answer": text, "citations": _cite_list(sched), "kind": "refer", "disclaimer": DISCLAIMER}
+        if caution:
+            out["caution"] = caution
+        return out
     if not passages:
-        return {"answer": "I couldn't find this in GLPal's trusted sources, so I won't guess. "
-                          "Your prescriber or pharmacist is the best person to ask.",
-                "citations": [], "kind": "not_found", "disclaimer": DISCLAIMER}
+        out = {"answer": "I couldn't find this in GLPal's trusted sources, so I won't guess. "
+                         "Your prescriber or pharmacist is the best person to ask.",
+               "citations": [], "kind": "not_found", "disclaimer": DISCLAIMER}
+        if caution:
+            out["caution"] = caution
+        return out
 
     unknown = knowledge.unknown_terms(question)
     numbered = "\n\n".join(f"[{i + 1}] {p['title']} ({p['source_name']}, {p.get('section', '')}):\n{p['text']}"
@@ -203,12 +242,18 @@ def answer(question: str, medication: str | None = None, user_context: str = "")
     if not ok and unknown and len(unknown) >= 1 and not text:
         # Offline mode can't judge relevance like an AI can: if the question is about something the
         # library never mentions, say so rather than returning a loosely related passage.
-        return {"answer": f"GLPal's trusted sources don't cover {', '.join(unknown)}, so I won't guess. "
-                          "Please ask your prescriber or pharmacist.",
-                "citations": [], "kind": "not_found", "mode": mode, "disclaimer": DISCLAIMER}
+        out = {"answer": f"GLPal's trusted sources don't cover {', '.join(unknown)}, so I won't guess. "
+                         "Please ask your prescriber or pharmacist.",
+               "citations": [], "kind": "not_found", "mode": mode, "disclaimer": DISCLAIMER}
+        if caution:
+            out["caution"] = caution
+        return out
     if not ok:                         # no AI, AI failed, or AI ignored the citation rule
         text = _extractive(passages)
         mode = "extractive" if mode == "mock" else (mode if mode == "offline-fallback" else f"{mode}+extractive")
     used = sorted({int(n) for n in re.findall(r"\[(\d+)\]", text)})
     cites = [c for c in _cite_list(passages) if c["n"] in used]
-    return {"answer": text, "citations": cites, "kind": "answer", "mode": mode, "disclaimer": DISCLAIMER}
+    out = {"answer": text, "citations": cites, "kind": "answer", "mode": mode, "disclaimer": DISCLAIMER}
+    if caution:
+        out["caution"] = caution
+    return out

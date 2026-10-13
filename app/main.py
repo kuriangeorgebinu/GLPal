@@ -96,10 +96,14 @@ def _logger(table: str, model):
             if col in row:
                 row[col] = _iso(row[col])
         if table == "doses":
+            # Resolve the timestamp first: a dose with no taken_at is "now", and the guard below
+            # compares timestamps, so it must never compare against None.
+            if not row.get("taken_at"):
+                row["taken_at"] = _iso(datetime.now())
             # Only the most recent dose defines the profile's medicine and current dose. Logging a
             # back-dated or different dose must not silently rewrite the profile (and bias the coach).
             latest = db.list_rows("doses", limit=1)
-            if not latest or (row.get("taken_at") or "") >= (latest[0]["taken_at"] or ""):
+            if not latest or (row["taken_at"] or "") >= (latest[0]["taken_at"] or ""):
                 db.update_profile({"medication": row["medication"], "current_dose_mg": row["dose_mg"]})
         return db.add(table, row)
 

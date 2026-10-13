@@ -117,6 +117,19 @@ def test_backdated_dose_does_not_change_profile():
     assert p["medication"] == "wegovy" and p["current_dose_mg"] == 1.0
 
 
+def test_profile_guard_uses_resolved_taken_at():
+    # A dose with no taken_at is "now", so it is the most recent dose and must update the profile.
+    client.post("/api/doses", json={"medication": "wegovy", "dose_mg": 0.25,
+                                    "taken_at": "2026-10-01T09:00:00"})
+    client.post("/api/doses", json={"medication": "wegovy", "dose_mg": 0.5})
+    assert client.get("/api/profile").json()["current_dose_mg"] == 0.5
+    # A back-dated dose must not rewrite the profile, even at a different strength.
+    client.post("/api/doses", json={"medication": "wegovy", "dose_mg": 0.25,
+                                    "taken_at": "2026-09-01T09:00:00"})
+    p = client.get("/api/profile").json()
+    assert p["medication"] == "wegovy" and p["current_dose_mg"] == 0.5
+
+
 def test_bad_timestamp_is_rejected_and_dashboard_still_works():
     assert client.post("/api/doses", json={"medication": "wegovy", "dose_mg": 0.5,
                                            "taken_at": "not-a-date"}).status_code == 422
