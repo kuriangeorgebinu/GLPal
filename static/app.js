@@ -154,17 +154,21 @@ function addMsg(html, cls) {
   $("#chat").appendChild(div); div.scrollIntoView({ behavior: "smooth", block: "end" }); return div;
 }
 
+const chatHistory = [];   // recent turns, so the coach can follow the conversation
+
 async function ask(q) {
   addMsg(esc(q), "user");
-  const pending = addMsg("Checking trusted sources…", "bot");
+  const pending = addMsg("…", "bot");
   try {
-    const r = await post("/api/coach", { question: q, use_my_data: $("#use-data").checked });
+    const r = await post("/api/coach", { question: q, use_my_data: $("#use-data").checked, history: chatHistory.slice(-8) });
+    chatHistory.push({ role: "user", text: q }, { role: "assistant", text: r.answer });
     const body = esc(r.answer).replace(/\[(\d+)\]/g, '<sup class="cite-ref">[$1]</sup>');
     const cites = (r.citations || []).map((c) => `<details><summary><b>[${c.n}]</b> ${esc(c.title)} · ${esc(c.source)}${c.section ? `, ${esc(c.section)}` : ""}</summary>
       <p>“${esc(c.quote)}”</p>${c.url ? `<a href="${esc(c.url)}" target="_blank" rel="noopener">Open source</a>` : ""}</details>`).join("");
     pending.className = `msg bot ${r.kind === "urgent" ? "urgent" : ""}`;
     const caution = r.caution ? `<div class="caution">⚠️ ${esc(r.caution)}</div>` : "";
-    pending.innerHTML = body + caution + (cites ? `<div class="cites"><b>Sources</b>${cites}</div>` : "") + `<div class="disc">${esc(r.disclaimer)}</div>`;
+    const disc = r.kind === "chat" ? "" : `<div class="disc">${esc(r.disclaimer)}</div>`;   // no disclaimer under small talk
+    pending.innerHTML = body + caution + (cites ? `<div class="cites"><b>Sources</b>${cites}</div>` : "") + disc;
   } catch (err) { pending.textContent = `Sorry, something went wrong: ${err.message}`; }
 }
 

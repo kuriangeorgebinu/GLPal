@@ -66,9 +66,15 @@ class WaterIn(BaseModel):
     logged_at: datetime | None = None
 
 
+class Turn(BaseModel):
+    role: Literal["user", "assistant"]
+    text: str = Field(..., max_length=4000)
+
+
 class AskIn(BaseModel):
     question: str = Field(..., max_length=1000)
     use_my_data: bool = True
+    history: list[Turn] = Field(default_factory=list, max_length=20)   # recent chat turns, for context
 
 
 @app.get("/api/status")
@@ -151,7 +157,8 @@ def dashboard():
 def ask(body: AskIn):
     profile = db.get_profile()
     ctx = insights.context_for_coach() if body.use_my_data else ""
-    return coach.answer(body.question, medication=profile.get("medication"), user_context=ctx)
+    return coach.answer(body.question, medication=profile.get("medication"), user_context=ctx,
+                        history=[t.model_dump() for t in body.history])
 
 
 @app.get("/api/sources")

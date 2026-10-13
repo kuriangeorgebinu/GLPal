@@ -112,8 +112,30 @@ Answer ONLY using the numbered source passages provided. Rules:
 - Never use outside knowledge. If the passages do not answer the question, say so plainly and
   suggest asking their prescriber or pharmacist.
 - Never tell the user to change, skip, split or stop a dose; never diagnose. Refer those to the prescriber.
+- This is a conversation: you may greet the user, acknowledge feelings and reply naturally in your own
+  words, without citations, as long as those sentences contain no medical facts.
 - Be warm, plain-spoken and brief: 2-5 short sentences, or a short list if steps help.
-- If the user's own log data is given, you may refer to it, but do not cite it as a source."""
+- If the user's own log data is given, you may refer to it, but do not cite it as a source.
+- Use the earlier conversation only to understand follow-up questions; it is not a source. Answer only
+  the current message; never comment on, compare with or "correct" your earlier replies.
+- If the current message is casual (a greeting, thanks, a feeling) and needs no medical facts, reply with
+  [CHAT] followed by a short, friendly reply, and nothing else."""
+
+CHAT_SYSTEM = """You are GLPal's coach, a warm, friendly companion inside an app for people taking GLP-1
+medicines (Wegovy, Ozempic, Mounjaro, Zepbound). Chat naturally and casually, like a supportive friend:
+greet people back, make small talk, encourage them, and help them use the app (logging doses, meals, side
+effects, weight, the doctor summary).
+Strict rules:
+- Do NOT state medical facts: no doses, schedules, side-effect lists, drug interactions, diagnoses or
+  treatment advice. If they ask a medical question, say kindly that it isn't covered by GLPal's trusted
+  sources and suggest their prescriber or pharmacist, or invite them to ask about doses, side effects,
+  nausea, protein or storage, which you can answer from the FDA labels.
+- Never tell anyone to change, skip, split or stop a dose.
+- Keep replies short: 1-3 sentences unless they clearly want more. No citations, no headings."""
+
+# A casual reply must never sneak in dosing facts; if it does, it is replaced.
+_CHAT_MEDICAL = re.compile(r"\b\d+(\.\d+)?\s?(mg|milligrams?|mcg|units?)\b|\b(increase|decrease|double|skip|"
+                           r"stop|split) (your|the) (dose|shot|injection|medication)\b", re.I)
 
 
 def _red_flag(question: str):
@@ -143,10 +165,12 @@ def _caution(question: str) -> str | None:
 # Small talk: greetings, thanks and "what can you do?" get a friendly reply instead of a
 # "not in my sources" refusal. Only whole short messages match, so real questions still go
 # through the red-flag check and retrieval.
-_GREETING = re.compile(r"^\s*(hi+|hey+|hello+|hiya|yo|good (morning|afternoon|evening)|greetings|howdy)"
+_GREETING = re.compile(r"^\s*((hi+|hey+|hello+|hiya|yo|good (morning|afternoon|evening)|greetings|howdy)[,!.]?\s*)?"
+                       r"((hi+|hey+|hello+|hiya|yo|good (morning|afternoon|evening)|greetings|howdy)"
+                       r"|how are you( doing)?( today)?|how.?s it going|what.?s up|sup)"
                        r"( there| glpal| coach)?\s*[!.?]*\s*$", re.I)
-_THANKS = re.compile(r"^\s*(thanks?|thank you|thx|ty|cheers|great|ok(ay)?|cool|perfect|got it)"
-                     r"( (so much|a lot|very much))?\s*[!.?]*\s*$", re.I)
+_THANKS = re.compile(r"^\s*((thanks?|thank you|thx|ty|cheers)\b[^?]{0,40}|(great|ok(ay)?|cool|perfect|got it)"
+                     r"( (so much|a lot|very much))?\s*[!.]*)\s*$", re.I)
 _HELP = re.compile(r"^\s*(help|what can you do|what do you do|how does this work|who are you|"
                    r"what (can|should) i ask( you)?)\s*[!.?]*\s*$", re.I)
 
@@ -189,7 +213,7 @@ def _extractive(passages: list[dict]) -> str:
         sentences = re.split(r"(?<=[.!?])\s+", p["text"])
         quote = " ".join(sentences[:3])
         if len(sentences) > 3:
-            quote += " …"
+            quote += " â€¦"
         parts.append(f"{quote} [{i + 1}]")
     return "\n\n".join(parts)
 
@@ -203,16 +227,58 @@ def _validate_citations(answer: str, n_sources: int) -> tuple[str, bool]:
     return cleaned.strip(), bool(re.search(r"\[\d+\]", cleaned))
 
 
-def answer(question: str, medication: str | None = None, user_context: str = "") -> dict:
+NOT_FOUND = ("I couldn't find this in GLPal's trusted sources, so I won't guess. "
+             "Your prescriber or pharmacist is the best person to ask.")
+GUARDED = ("I'm here to help! I can't give dosing advice in a chat, but ask me about your medicine, side effects "
+           "or eating and I'll answer from GLPal's trusted sources. For dose questions, your prescriber is the best person.")
+
+
+def _clean_history(history) -> list[dict]:
+    """Last few turns of the conversation, trimmed. Only used for context, never as a source."""
+    out = []
+    for turn in (history or [])[-8:]:
+        role = "user" if str(turn.get("role", "")).lower() == "user" else "assistant"
+        text = re.sub(r"\s+", " ", str(turn.get("text", ""))).strip()[:600]
+        if text:
+            out.append({"role": role, "text": text})
+    return out
+
+
+def _transcript(history: list[dict]) -> str:
+    return "\n".join(f"{'User' if t['role'] == 'user' else 'Coach'}: {t['text']}" for t in history)
+
+
+def _chat_reply(question: str, history: list[dict], user_context: str) -> tuple[str, str]:
+    """Casual conversation with the AI (no sources needed because no medical facts are allowed)."""
+    mode = llm.provider()
+    if mode == "mock":
+        return (_small_talk(question) or NOT_FOUND), "offline"
+    user = ""
+    if history:
+        user += f"Conversation so far:\n{_transcript(history)}\n\n"
+    if user_context:
+        user += f"The user's own recent log (you may mention it gently):\n{user_context}\n\n"
+    user += f"User: {question}"
+    try:
+        text = llm.chat(CHAT_SYSTEM, user, max_tokens=600).strip()
+    except llm.LLMError:
+        return (_small_talk(question) or NOT_FOUND), "offline-fallback"
+    if not text:
+        return (_small_talk(question) or NOT_FOUND), f"{mode}+empty"
+    if _CHAT_MEDICAL.search(text):     # casual replies may never carry dosing; swap in a safe friendly line
+        return GUARDED, f"{mode}+guarded"
+    return text, mode
+
+
+def answer(question: str, medication: str | None = None, user_context: str = "",
+           history: list[dict] | None = None) -> dict:
     question = (question or "").strip()
     if not question:
         return {"answer": "Ask me anything about your GLP-1 medicine, side effects or nutrition.",
                 "citations": [], "kind": "empty", "disclaimer": DISCLAIMER}
+    history = _clean_history(history)
 
-    chat = _small_talk(question)
-    if chat:
-        return {"answer": chat, "citations": [], "kind": "chat", "disclaimer": DISCLAIMER}
-
+    # 1. Emergencies first, always, even inside small talk.
     flag = _red_flag(question)
     if flag:
         card_id, message = flag
@@ -227,31 +293,46 @@ def answer(question: str, medication: str | None = None, user_context: str = "")
             body += f"\n\nWhat the official label says: {card['text']} [1]"
         return {"answer": body, "citations": cites, "kind": "urgent", "disclaimer": DISCLAIMER}
 
-    passages = knowledge.search(question, k=4, medication=medication)
+    # Short follow-ups ("what about Mounjaro?") are searched together with the previous question.
+    query = question
+    last_user = next((t["text"] for t in reversed(history) if t["role"] == "user"), "")
+    if last_user and len(question.split()) <= 8:
+        query = f"{last_user} {question}"
+    passages = knowledge.search(question, k=4, medication=medication) or \
+        (knowledge.search(query, k=4, medication=medication) if query != question else [])
     caution = _caution(question)
 
+    def _out(d: dict) -> dict:
+        if caution:
+            d["caution"] = caution
+        d["disclaimer"] = DISCLAIMER
+        return d
+
+    # 2. Never advise on dose changes.
     if DOSE_CHANGE.search(question):
         sched = [p for p in passages if "escalation" in p["id"] or "missed" in p["id"]][:2]
         text = ("I can't advise changing, skipping or splitting a dose. That decision belongs to your "
                 "prescriber, who knows your health history. Please message or call them, or ask your pharmacist.")
         if sched:
             text += "\n\nFor reference, here is the official schedule: " + _extractive(sched)
-        out = {"answer": text, "citations": _cite_list(sched), "kind": "refer", "disclaimer": DISCLAIMER}
-        if caution:
-            out["caution"] = caution
-        return out
-    if not passages:
-        out = {"answer": "I couldn't find this in GLPal's trusted sources, so I won't guess. "
-                         "Your prescriber or pharmacist is the best person to ask.",
-               "citations": [], "kind": "not_found", "disclaimer": DISCLAIMER}
-        if caution:
-            out["caution"] = caution
-        return out
+        return _out({"answer": text, "citations": _cite_list(sched), "kind": "refer"})
 
+    # 3. Greetings, thanks and anything the sources don't cover: a casual conversation.
+    if _small_talk(question) or not passages:
+        text, mode = _chat_reply(question, history, user_context)
+        kind = "chat" if text != NOT_FOUND else "not_found"
+        return _out({"answer": text, "citations": [], "kind": kind, "mode": mode})
+
+    # 4. A medical question with relevant sources: a cited answer.
     unknown = knowledge.unknown_terms(question)
     numbered = "\n\n".join(f"[{i + 1}] {p['title']} ({p['source_name']}, {p.get('section', '')}):\n{p['text']}"
                            for i, p in enumerate(passages))
-    user = f"Source passages:\n{numbered}\n\n"
+    user = ""
+    if history:
+        user += f"Earlier conversation (context only, not a source):\n{_transcript(history)}\n\n"
+    user += f"Source passages:\n{numbered}\n\n"
+    if medication:
+        user += f"The user takes: {medication}. Focus on that medicine unless they ask about another.\n\n"
     if user_context:
         user += f"The user's own recent log (not a source):\n{user_context}\n\n"
     user += f"Question: {question}"
@@ -267,24 +348,29 @@ def answer(question: str, medication: str | None = None, user_context: str = "")
         text = llm.chat(SYSTEM, user)
     except llm.LLMError:
         mode = "offline-fallback"
+    if text.lstrip().startswith("[CHAT]"):
+        reply = text.lstrip()[len("[CHAT]"):].strip()
+        if reply and not _CHAT_MEDICAL.search(reply) and not re.search(r"\[\d+\]", reply):
+            return _out({"answer": reply, "citations": [], "kind": "chat", "mode": mode})
+        return _out({"answer": GUARDED, "citations": [], "kind": "chat", "mode": f"{mode}+guarded"})
     ok = False
     if text:
         text, ok = _validate_citations(text, len(passages))
-    if not ok and unknown and len(unknown) >= 1 and not text:
+    if not ok and unknown and not text:
         # Offline mode can't judge relevance like an AI can: if the question is about something the
         # library never mentions, say so rather than returning a loosely related passage.
-        out = {"answer": f"GLPal's trusted sources don't cover {', '.join(unknown)}, so I won't guess. "
-                         "Please ask your prescriber or pharmacist.",
-               "citations": [], "kind": "not_found", "mode": mode, "disclaimer": DISCLAIMER}
-        if caution:
-            out["caution"] = caution
-        return out
-    if not ok:                         # no AI, AI failed, or AI ignored the citation rule
+        return _out({"answer": f"GLPal's trusted sources don't cover {', '.join(unknown)}, so I won't guess. "
+                               "Please ask your prescriber or pharmacist.",
+                     "citations": [], "kind": "not_found", "mode": mode})
+    if not ok and text and mode not in ("mock", "offline-fallback"):
+        # The AI answered without citing anything, so the sources weren't really relevant (e.g. "what
+        # should I make for dinner?"). Reply as casual chat rather than quoting an unrelated passage.
+        reply, chat_mode = _chat_reply(question, history, user_context)
+        kind = "chat" if reply != NOT_FOUND else "not_found"
+        return _out({"answer": reply, "citations": [], "kind": kind, "mode": f"{chat_mode}+uncited"})
+    if not ok:                         # no AI, or the AI failed: quote the best cited passage
         text = _extractive(passages)
         mode = "extractive" if mode == "mock" else (mode if mode == "offline-fallback" else f"{mode}+extractive")
     used = sorted({int(n) for n in re.findall(r"\[(\d+)\]", text)})
     cites = [c for c in _cite_list(passages) if c["n"] in used]
-    out = {"answer": text, "citations": cites, "kind": "answer", "mode": mode, "disclaimer": DISCLAIMER}
-    if caution:
-        out["caution"] = caution
-    return out
+    return _out({"answer": text, "citations": cites, "kind": "answer", "mode": mode})

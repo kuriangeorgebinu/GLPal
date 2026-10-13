@@ -13,7 +13,9 @@ from . import config
 
 STOP = set("""a an and are as at be but by can do does for from has have how i if in into is it its
 me my of on or so that the their them then there these this to was what when where which who why
-will with you your should could would am im ive day days ago now get got much many need just also any some""".split())
+will with you your should could would am im ive day days ago now get got much many need just also any some
+make made lol haha ok okay yeah yes yep nope please want like know think tell thing stuff really pretty
+maybe guess anyway btw tonight tomorrow today""".split())
 
 SYNONYMS = {
     "ozempic": "semaglutide", "wegovy": "semaglutide", "rybelsus": "semaglutide",
@@ -90,6 +92,8 @@ def search(query: str, k: int = 4, medication: str | None = None) -> list[dict]:
     if not q:
         return []
     content = set(_content_tokens(query))
+    if not content:                       # only filler words ("how's it going?", "what's up"): nothing to look up
+        return []
     n, k1, b = len(docs), 1.5, 0.75
     scored = []
     for i, d in enumerate(docs):
