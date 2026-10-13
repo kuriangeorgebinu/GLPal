@@ -44,11 +44,17 @@ def _offline(description: str) -> dict:
             p, kcal, fat = FOODS[food]
             items.append({"name": food, "protein_g": round(p * qty), "calories": round(kcal * qty), "high_fat": fat})
             used.add(food)
+    if not items:
+        # Nothing recognised: return no numbers rather than a misleading 0 g, and ask for real values.
+        return {"items": [], "protein_g": None, "calories": None, "high_fat": False, "confidence": "none",
+                "tip": "", "note": "I couldn't recognise any foods in that description. Please type the protein "
+                                   "and calorie numbers yourself, or describe the meal with common foods.",
+                "mode": "offline-table"}
     protein = sum(i["protein_g"] for i in items)
     return {"items": [{k: v for k, v in i.items() if k != "high_fat"} for i in items],
             "protein_g": protein, "calories": sum(i["calories"] for i in items),
             "high_fat": any(i["high_fat"] for i in items),
-            "confidence": "low" if items else "none",
+            "confidence": "low",
             "tip": "Adding a protein like Greek yogurt, eggs or chicken would help you reach your target."
                    if protein < 20 else "Nice protein-forward meal.",
             "mode": "offline-table"}
@@ -58,7 +64,7 @@ def estimate(description: str = "", image: bytes | None = None, image_type: str 
     description = (description or "").strip()
     if image is not None and not llm.supports_vision():
         result = _offline(description) if description else {
-            "items": [], "protein_g": 0, "calories": 0, "high_fat": False, "confidence": "none", "tip": "",
+            "items": [], "protein_g": None, "calories": None, "high_fat": False, "confidence": "none", "tip": "",
             "mode": "offline-table"}
         result["note"] = ("Photo estimates need an AI provider with vision (set LLM_PROVIDER=anthropic or openai). "
                           "Add a short description and GLPal will estimate from that.")
@@ -66,7 +72,7 @@ def estimate(description: str = "", image: bytes | None = None, image_type: str 
     if not description and image is None:
         return {"error": "Describe the meal or add a photo."}
     if llm.provider() == "mock":
-        return _offline(description)
+        return _numbers(_offline(description))
     prompt = f"Meal description: {description or '(see photo)'}"
     try:
         data = llm.extract_json(llm.chat(SYSTEM, prompt, image=image, image_type=image_type, max_tokens=500))
@@ -75,9 +81,17 @@ def estimate(description: str = "", image: bytes | None = None, image_type: str 
     if not data or "protein_g" not in data:
         out = _offline(description)
         out["note"] = "The AI estimate wasn't available, so this is a rough offline estimate."
-        return out
+        return _numbers(out)
     data["protein_g"] = round(float(data.get("protein_g") or 0))
     data["calories"] = round(float(data.get("calories") or 0))
     data["high_fat"] = bool(data.get("high_fat"))
     data["mode"] = llm.provider()
     return data
+
+
+def _numbers(result: dict) -> dict:
+    """Make sure protein/calories are numbers or None, never a string or a missing key."""
+    for key in ("protein_g", "calories"):
+        v = result.get(key)
+        result[key] = None if v is None else round(float(v))
+    return result

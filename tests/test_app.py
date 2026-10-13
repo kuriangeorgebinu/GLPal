@@ -1,15 +1,13 @@
-"""Run with:  python -m pytest -q   (uses a temporary database and the offline AI mode)."""
-import os
-import tempfile
+"""Run with:  python -m pytest -q   (uses a temporary database and the offline AI mode).
+
+The offline mode and temporary database are set up in tests/conftest.py, before any app import.
+"""
 from datetime import datetime, timedelta
 
-os.environ["LLM_PROVIDER"] = "mock"
-os.environ["GLPAL_DB"] = os.path.join(tempfile.mkdtemp(), "test.db")
+from fastapi.testclient import TestClient
 
-from fastapi.testclient import TestClient  # noqa: E402
-
-from app import coach, insights, knowledge, meals  # noqa: E402
-from app.main import app  # noqa: E402
+from app import coach, insights, knowledge, meals
+from app.main import app
 
 client = TestClient(app)
 
@@ -93,3 +91,63 @@ def test_report_and_estimate_endpoint():
 def test_out_of_scope_offline():
     assert coach.answer("Can I drink alcohol on this?")["kind"] == "not_found"
     assert coach.answer("I feel constipated")["kind"] == "answer"
+
+
+def test_dose_status_counts_consecutive_weeks():
+    base = datetime(2026, 1, 5, 9)
+    doses = [
+        {"taken_at": (base + timedelta(days=7 * i)).isoformat(), "medication": "wegovy", "dose_mg": mg}
+        for i, mg in enumerate([0.5, 1.0, 0.5])
+    ]
+    # Deliberately out of order: dose_status must sort internally.
+    shuffled = [doses[1], doses[2], doses[0]]
+    st = insights.dose_status({}, shuffled, now=base + timedelta(days=14))
+    assert st["weeks_on_current_dose"] == 1
+    assert st["last_dose"]["dose_mg"] == 0.5
+
+
+def test_backdated_dose_does_not_change_profile():
+    client.put("/api/profile", json={"medication": "wegovy", "current_dose_mg": 1.0})
+    client.post("/api/doses", json={"medication": "wegovy", "dose_mg": 1.0})
+    assert client.get("/api/profile").json()["current_dose_mg"] == 1.0
+    # A back-dated dose of a different medicine must not rewrite the profile.
+    client.post("/api/doses", json={"medication": "mounjaro", "dose_mg": 2.5,
+                                    "taken_at": "2020-01-01T09:00:00"})
+    p = client.get("/api/profile").json()
+    assert p["medication"] == "wegovy" and p["current_dose_mg"] == 1.0
+
+
+def test_profile_guard_uses_resolved_taken_at():
+    # A dose with no taken_at is "now", so it is the most recent dose and must update the profile.
+    client.post("/api/doses", json={"medication": "wegovy", "dose_mg": 0.25,
+                                    "taken_at": "2026-10-01T09:00:00"})
+    client.post("/api/doses", json={"medication": "wegovy", "dose_mg": 0.5})
+    assert client.get("/api/profile").json()["current_dose_mg"] == 0.5
+    # A back-dated dose must not rewrite the profile, even at a different strength.
+    client.post("/api/doses", json={"medication": "wegovy", "dose_mg": 0.25,
+                                    "taken_at": "2026-09-01T09:00:00"})
+    p = client.get("/api/profile").json()
+    assert p["medication"] == "wegovy" and p["current_dose_mg"] == 0.5
+
+
+def test_bad_timestamp_is_rejected_and_dashboard_still_works():
+    assert client.post("/api/doses", json={"medication": "wegovy", "dose_mg": 0.5,
+                                           "taken_at": "not-a-date"}).status_code == 422
+    assert client.post("/api/water", json={"ml": 250, "logged_at": "not-a-date"}).status_code == 422
+    assert client.get("/api/dashboard").status_code == 200
+
+
+def test_offline_meal_estimate_unknown_food():
+    r = meals.estimate("a bowl of pho")
+    assert r["protein_g"] is None and r["calories"] is None and r["confidence"] == "none"
+    assert r["note"]
+    resp = client.post("/api/meals/estimate", data={"description": "a bowl of pho"})
+    assert resp.status_code == 200
+    assert resp.json()["protein_g"] is None
+
+
+def test_privacy_route_and_disclosure():
+    r = client.get("/privacy")
+    assert r.status_code == 200 and "glpal.db" in r.text
+    assert 'id="ai-disclosure"' in client.get("/").text
+    assert 'id="meal-disclosure"' in client.get("/").text

@@ -43,6 +43,24 @@ def _tokens(text: str) -> list[str]:
     return out
 
 
+def _content_tokens(text: str) -> list[str]:
+    """Query tokens that carry meaning: no stopwords, no generic filler, no synonym expansions.
+
+    Used to require that a returned passage actually shares a real word with the question, so a
+    weak top match can't drag in passages that only share a stopword-ish token.
+    """
+    out = []
+    for w in re.findall(r"[a-z0-9]+(?:\.[0-9]+)?", text.lower()):
+        if w in STOP or w in GENERIC or len(w) < 3:
+            continue
+        out.append(w)
+        if w.endswith("s") and len(w) > 4:
+            out.append(w[:-1])
+        if w in SYNONYMS:                 # "constipated" -> "constipation" is a real content word
+            out.append(SYNONYMS[w])
+    return out
+
+
 @lru_cache(maxsize=1)
 def load() -> tuple[list[dict], dict]:
     passages, sources = [], {}
@@ -71,6 +89,7 @@ def search(query: str, k: int = 4, medication: str | None = None) -> list[dict]:
     q = _tokens(query)
     if not q:
         return []
+    content = set(_content_tokens(query))
     n, k1, b = len(docs), 1.5, 0.75
     scored = []
     for i, d in enumerate(docs):
@@ -80,11 +99,16 @@ def search(query: str, k: int = 4, medication: str | None = None) -> list[dict]:
             if t in tf:
                 idf = math.log(1 + (n - df[t] + 0.5) / (df[t] + 0.5))
                 s += idf * tf[t] * (k1 + 1) / (tf[t] + k1 * (1 - b + b * len(d) / avg))
+        if s <= 0:
+            continue
+        # A passage must share at least one real content word with the question. Without this, a weak
+        # top match admits passages that only share a filler token, and the coach would cite them.
+        if content and not (content & set(d)):
+            continue
         drugs = passages[i].get("drugs") or []
         if medication and drugs:          # prefer passages about the user's own medicine
             s *= 1.25 if medication.lower() in drugs else 0.8
-        if s > 0:
-            scored.append((s, i))
+        scored.append((s, i))
     scored.sort(reverse=True)
     if not scored:
         return []

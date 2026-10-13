@@ -70,6 +70,14 @@ in `.env`:
 `LLM_PROVIDER=auto` (the default) uses whichever key is set. The badge in the top-right corner
 shows which AI is active.
 
+### Privacy
+With **no API key**, nothing leaves your computer: the coach quotes its own cited library and meal
+estimates come from a built-in food table. With a key set, your coach question (and, only if you tick
+"Let the coach see my recent logs", a short summary of your logs) and your meal description/photo are
+sent to that provider. The coach and meal tabs say so on screen, and log-sharing is off by default
+when a real provider is active. GLPal has no ads, no analytics and never sells data. Full details:
+[PRIVACY.md](PRIVACY.md), also served at `/privacy`.
+
 ### Run the tests
 ```bash
 python -m pytest -q
@@ -96,12 +104,14 @@ tests/           pytest suite (offline)
 **Safety design.** The coach can only use retrieved passages. It must cite every claim, and citation
 numbers are checked after generation: invented ones are dropped. If an answer ends up with no
 real citations, it is replaced by a quoted, cited passage. Emergency symptoms are caught before any
-AI call.
+AI call, and the red-flag patterns are order-independent (a severity word, a body part and a pain
+word can appear in any order). A passage is only returned if it shares a real content word with the
+question, so a weak match can't drag in an unrelated citation.
 
 ### API
 Interactive docs are at http://127.0.0.1:8000/docs. Main endpoints: `GET /api/dashboard`,
 `POST /api/{doses|symptoms|meals|weights|water}`, `POST /api/meals/estimate`, `POST /api/coach`,
-`GET /api/sources` and `GET /report`.
+`GET /api/sources`, `GET /report` and `GET /privacy`.
 
 ## Roadmap ideas
 Mobile app (Expo), reminders through push notifications, Apple Health / Google Fit sync, an
