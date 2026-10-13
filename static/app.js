@@ -106,10 +106,15 @@ $("#estimate-btn").addEventListener("click", async () => {
   btn.disabled = true; btn.textContent = "Estimating…";
   try {
     const r = await api("/api/meals/estimate", { method: "POST", body: fd });
-    f.protein_g.value = r.protein_g; f.calories.value = r.calories; f.high_fat.checked = !!r.high_fat;
+    if (typeof r.protein_g === "number") f.protein_g.value = r.protein_g;
+    if (typeof r.calories === "number") f.calories.value = r.calories;
+    f.high_fat.checked = !!r.high_fat;
     const items = (r.items || []).map((i) => `${esc(i.name)} (${i.protein_g} g)`).join(", ");
+    const numbers = typeof r.protein_g === "number"
+      ? `Estimate: ${r.protein_g} g protein · ${r.calories} kcal · confidence ${esc(r.confidence)}${r.mode === "offline-table" ? " (offline estimate)" : ""}`
+      : `No estimate available · confidence ${esc(r.confidence)}`;
     out.innerHTML = `<p class="items">${items || "No foods recognised. Enter numbers by hand."}</p>
-      <p>Estimate: ${r.protein_g} g protein · ${r.calories} kcal · confidence ${esc(r.confidence)}${r.mode === "offline-table" ? " (offline estimate)" : ""}</p>
+      <p>${numbers}</p>
       ${r.tip ? `<p>💡 ${esc(r.tip)}</p>` : ""}${r.note ? `<p>${esc(r.note)}</p>` : ""}<p>You can adjust the numbers before saving.</p>`;
   } catch (err) { out.textContent = err.message; }
   btn.disabled = false; btn.textContent = "Estimate with AI";
@@ -204,7 +209,22 @@ $("#profile-form").addEventListener("submit", async (e) => {
 (async () => {
   const s = await api("/api/status");
   $("#ai-badge").textContent = s.ai_provider === "mock" ? "AI: offline mode" : `AI: ${s.ai_provider}`;
+  applyDisclosure(s.ai_provider);
   prefillDose();
   let tab = "today"; try { tab = localStorage.getItem("glpal-tab") || "today"; } catch {}
   show(tab);
 })();
+
+// ---------- privacy disclosure ----------
+function applyDisclosure(provider) {
+  const real = provider && provider !== "mock";
+  const coach = $("#ai-disclosure"), meal = $("#meal-disclosure");
+  if (coach) coach.textContent = real
+    ? `With an AI key set, your question and, if you allow it, your recent logs are sent to ${provider} to answer. With no key, nothing leaves this computer.`
+    : "Offline mode: nothing leaves this computer.";
+  if (meal) meal.textContent = real
+    ? `With an AI key set, your meal description and photo are sent to ${provider} to estimate. With no key, nothing leaves this computer.`
+    : "Offline mode: nothing leaves this computer.";
+  const useData = $("#use-data");
+  if (useData && real) useData.checked = false;   // log-sharing is opt-in when a real provider is active
+}

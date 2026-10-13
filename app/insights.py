@@ -32,6 +32,9 @@ def dose_status(profile: dict, doses: list[dict], now: datetime | None = None) -
     now = now or datetime.now()
     if not doses:
         return {"state": "none", "message": "Log your first dose to start tracking your weekly schedule."}
+    # Sort internally: callers may pass rows in any order, and the whole calculation depends on
+    # "most recent dose first".
+    doses = sorted(doses, key=lambda d: d["taken_at"], reverse=True)
     last = doses[0]
     due = _dt(last["taken_at"]) + timedelta(days=7)
     days_left = (due.date() - now.date()).days
@@ -44,8 +47,16 @@ def dose_status(profile: dict, doses: list[dict], now: datetime | None = None) -
     state = "ok" if days_left > 0 else ("due" if days_left == 0 else "overdue")
     out = {"state": state, "last_dose": last, "next_due": due.date().isoformat(), "days_left": days_left,
            "suggested_site": next_site}
-    same = [d for d in doses if d["dose_mg"] == last["dose_mg"] and d["medication"] == last["medication"]]
-    out["weeks_on_current_dose"] = len(same)
+    # Count consecutive doses at the current strength, walking back from the latest dose until the
+    # medicine or the dose changes. Counting every dose ever logged at that strength would inflate
+    # the number a prescriber reads on the visit summary.
+    weeks = 0
+    for d in doses:
+        if d["dose_mg"] == last["dose_mg"] and d["medication"] == last["medication"]:
+            weeks += 1
+        else:
+            break
+    out["weeks_on_current_dose"] = weeks
     if state == "overdue":
         rule = MISSED_DOSE.get((last["medication"] or "").lower())
         if rule:

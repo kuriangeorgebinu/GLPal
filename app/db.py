@@ -1,4 +1,4 @@
-"""SQLite storage. One local file (glpal.db); nothing leaves the machine except AI calls."""
+"""SQLite storage in one local file (glpal.db). Health data stays on this computer; only AI requests (see PRIVACY.md) leave it."""
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime

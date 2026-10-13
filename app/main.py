@@ -1,8 +1,9 @@
 """GLPal web app: FastAPI JSON API + a single-page front end served from /static."""
+from datetime import datetime
 from typing import Literal
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -13,6 +14,11 @@ app = FastAPI(title="GLPal", version="0.1.0",
 db.init()
 
 Medication = Literal["wegovy", "ozempic", "mounjaro", "zepbound"]
+
+
+def _iso(dt: datetime | None) -> str | None:
+    """Store timestamps as plain ISO strings without microseconds (YYYY-MM-DDTHH:MM:SS)."""
+    return dt.replace(microsecond=0).isoformat() if dt else None
 
 
 class ProfileIn(BaseModel):
@@ -31,14 +37,14 @@ class DoseIn(BaseModel):
     dose_mg: float = Field(..., gt=0, le=20)
     site: str = ""
     notes: str = ""
-    taken_at: str | None = None
+    taken_at: datetime | None = None
 
 
 class SymptomIn(BaseModel):
     symptom: str = Field(..., min_length=1, max_length=60)
     severity: int = Field(..., ge=1, le=5)
     notes: str = ""
-    logged_at: str | None = None
+    logged_at: datetime | None = None
 
 
 class MealIn(BaseModel):
@@ -47,17 +53,17 @@ class MealIn(BaseModel):
     calories: float = Field(0, ge=0, le=10000)
     high_fat: bool = False
     source: str = "manual"
-    eaten_at: str | None = None
+    eaten_at: datetime | None = None
 
 
 class WeightIn(BaseModel):
     weight_kg: float = Field(..., gt=20, lt=400)
-    measured_at: str | None = None
+    measured_at: datetime | None = None
 
 
 class WaterIn(BaseModel):
     ml: float = Field(..., gt=0, le=5000)
-    logged_at: str | None = None
+    logged_at: datetime | None = None
 
 
 class AskIn(BaseModel):
@@ -86,8 +92,15 @@ def _logger(table: str, model):
         row = body.model_dump()
         if table == "meals":
             row["high_fat"] = int(row["high_fat"])
+        for col in ("taken_at", "logged_at", "eaten_at", "measured_at"):
+            if col in row:
+                row[col] = _iso(row[col])
         if table == "doses":
-            db.update_profile({"medication": row["medication"], "current_dose_mg": row["dose_mg"]})
+            # Only the most recent dose defines the profile's medicine and current dose. Logging a
+            # back-dated or different dose must not silently rewrite the profile (and bias the coach).
+            latest = db.list_rows("doses", limit=1)
+            if not latest or (row.get("taken_at") or "") >= (latest[0]["taken_at"] or ""):
+                db.update_profile({"medication": row["medication"], "current_dose_mg": row["dose_mg"]})
         return db.add(table, row)
 
     def list_(days: int = 30):
@@ -147,6 +160,11 @@ def sources():
 @app.get("/report", response_class=HTMLResponse)
 def visit_report(days: int = 30):
     return report.build(max(1, min(days, 365)))
+
+
+@app.get("/privacy", response_class=PlainTextResponse)
+def privacy():
+    return (config.ROOT / "PRIVACY.md").read_text(encoding="utf-8")
 
 
 app.mount("/static", StaticFiles(directory=config.STATIC_DIR), name="static")

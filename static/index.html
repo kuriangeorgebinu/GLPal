@@ -51,6 +51,7 @@
           <label>What did you eat?<textarea name="description" rows="2" placeholder="e.g. 2 eggs, toast and a Greek yogurt"></textarea></label>
           <label class="file">Photo (optional)<input type="file" name="photo" accept="image/*" capture="environment"></label>
           <button type="button" id="estimate-btn" class="secondary">Estimate with AI</button>
+          <p class="hint small" id="meal-disclosure"></p>
           <div id="estimate-out" class="estimate"></div>
           <div class="row">
             <label>Protein (g)<input name="protein_g" type="number" min="0" step="1" value="0"></label>
@@ -96,6 +97,7 @@
       <div class="coach">
         <p class="hint">Ask about your medicine, side effects or eating. Every answer comes from trusted sources
           (FDA prescribing information and a 2025 joint nutrition advisory) and shows them. It's education, not medical advice.</p>
+        <p class="hint small" id="ai-disclosure"></p>
         <div class="chips" id="coach-suggestions"></div>
         <div id="chat" class="chat"></div>
         <form id="coach-form" class="ask">
@@ -140,7 +142,8 @@
     </section>
   </main>
 
-  <footer>GLPal is an educational tracking tool, not medical advice. In an emergency call 911.</footer>
+  <footer>GLPal is an educational tracking tool, not medical advice. In an emergency call 911.
+    <a href="/privacy" target="_blank" rel="noopener">Privacy</a></footer>
   <div id="toast" class="toast"></div>
   <script src="/static/app.js"></script>
 </body>
