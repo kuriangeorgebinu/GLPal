@@ -4,11 +4,8 @@
   --water: #2f7fb8; --warn-bg: #fff3e6; --warn: #a3501a; --danger-bg: #fdeaea; --danger: #a12626;
   --radius: 14px;
 }
-@media (prefers-color-scheme: dark) {
-  :root { --bg: #121614; --surface: #1b211e; --ink: #e9efe9; --muted: #9fb0a7; --line: #2c3530;
-    --brand: #4cc092; --brand-ink: #0d1411; --brand-soft: #1f3a2e; --accent: #f0955c; --water: #63a9de;
-    --warn-bg: #3a2a1b; --warn: #f2b07e; --danger-bg: #3d1d1d; --danger: #ff9b9b; }
-}
+/* Always light, even when the computer is set to dark mode (form controls included). */
+:root { color-scheme: light; }
 * { box-sizing: border-box; }
 body { margin: 0; font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--ink); }
 .top { display: flex; justify-content: space-between; align-items: center; padding: 14px 16px; max-width: 1040px; margin: 0 auto; }
